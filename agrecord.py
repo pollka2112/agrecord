@@ -5,8 +5,9 @@ Created on 2018/03/13
 '''
 import pygame,sys,actionboard,playerboard
 from pygame.locals import *
+from bokeh.events import MouseMove
 
-FPS = 20 # frames per second, the general speed of the program
+FPS = 60 # frames per second, the general speed of the program
 WINDOWWIDTH = 800 # size of window's width in pixels
 WINDOWHEIGHT = 600 # size of windows' height in pixels
 BOXSIZE = 120 # size of box height & width in pixels
@@ -62,6 +63,7 @@ class Main:
         self.perspectivePlayer = self.players[0]
         #盤を見ているプレイヤーを表す変数
         self.turnplayer = self.players[0]
+        self.startplayer = self.players[0]
         self.perspective = 6
         #プレイヤーが見ているボードがどのボードかを表す変数、0~4はplayers[0]~[4]に対応。6,7はpage1とpage2に対応。
         self.DISPLAYSURF.fill(BGCOLOR)
@@ -74,7 +76,7 @@ class Main:
         #インスタンスが作成された時にこの関数がすぐに読み出されるようになっている。
         while True: #一番大きなゲームループ
             self.mouseClicked = False
-            #マウスがクリックされているかどうかを示す変数
+            #マウスがクリックされているかどうかを示す変数,Falseに戻す
             self.mainboard.actionRect.clear()
             #3かける5の盤面のマスを格納する多重リスト。ここでは.clearで中身を消去している。
             self.mainboard.playerCirc.clear()
@@ -100,12 +102,12 @@ class Main:
             triangle = ((WINDOWWIDTH-int(XMARGIN*4/5),int(WINDOWHEIGHT/2)+30),(WINDOWWIDTH-int(XMARGIN*4/5),int(WINDOWHEIGHT/2)-30),(WINDOWWIDTH-int(XMARGIN/5),int(WINDOWHEIGHT/2)))
             self.mainboard.pagecTri.append(pygame.draw.polygon(self.DISPLAYSURF,HIGHLIGHTCOLOR,triangle))
             #盤面移動の三角アイコンの作成
+            #プレイヤーのサプライ情報の表示
             for key, value in self.perspectivePlayer.supply.items():
                 textSurfaceObj = fontObj.render(key+str(value),True,BLACK,BACKLETTER)
                 textRectObj = textSurfaceObj.get_rect()
                 textRectObj.center = (int(XMARGIN/2), int(YMARGIN/2)+RESOURCE.index(key)*int((WINDOWHEIGHT-YMARGIN)/10))
                 self.DISPLAYSURF.blit(textSurfaceObj, textRectObj)
-            #プレイヤーのサプライ情報の表示
             #これ以下、描画するページについての分岐
             if self.perspective == 6:
                 self.drawPage1()
@@ -119,13 +121,19 @@ class Main:
                     pygame.quit()
                     sys.exit()
                 elif event.type == MOUSEMOTION:
-                    self.mousex, self.mousey = event.pos
+                    mousex, mousey = event.pos
                 elif event.type == MOUSEBUTTONUP:
                     self.mousex, self.mousey = event.pos
                     self.mouseClicked = True
                     
             if self.mouseClicked == True:
-                if self.mainboard.phase == '労働フェイズ':
+                if self.mainboard.phase == '準備フェイズ':
+                    self.turnplayer == self.startplayer
+                    for i in self.mainboard.actionCards:
+                        i.prepare()
+                    self.mainboard.phase == '労働フェイズ'
+                elif self.mainboard.phase == '労働フェイズ':
+                    #どのアクションが行われたかをどのブロックが押されたかで判断する
                     for space in self.mainboard.actionRect:
                         if space.collidepoint(self.mousex,self.mousey) == True:
                             if self.perspective == 6:
@@ -133,12 +141,29 @@ class Main:
                                 self.mainboard.actionCards[self.mainboard.actionRect.index(space)].meeple = self.turnplayer.playercolor 
                             elif self.perspactive == 7:
                                 self.mainboard.actionCards[self.mainboard.actionRect.index(space)-15].doAction(self.turnplayer)
-                                self.mainboard.actionCards[self.mainboard.actionRect.index(space)-15].meeple = self.turnplayer.playercolor
+                                self.mainboard.actionCards[self.mainboard.actionRect.index(space)-15].meeple =  self.turnplayer.playercolor
+                            #動いている家族の数を増やす
                             self.turnplayer.workingMember += 1
-                            if self.turnplayer == self.players[4]:
-                                self.turnplayer = self.players[0]
-                            else:
-                                self.turnplayer = self.players[self.players.index(self.turnplayer)+1]
+                            #手番を次の人に渡す処理と動ける家族がいるかどうか確かめる処理
+                            for i in range(1,6):
+                                if self.players.index(self.turnplayer)+i <= 4:
+                                    if self.players[self.players.index(self.turnplayer)+i].workingMember < self.players[self.players.index(self.turnplayer)+i].activeMember:
+                                        self.turnplayer = self.perspectivePlayer = self.players[self.players.index(self.turnplayer)+i]
+                                        break
+                                else: 
+                                    if self.players[self.players.index(self.turnplayer)+i-5].workingMember < self.players[self.players.index(self.turnplayer)+i-5].activeMember:
+                                        self.turnplayer = self.perspectivePlayer =self.players[self.players.index(self.turnplayer)+i-5]
+                                        break
+                                #ここからラウンド終了の処理(これはあとで帰宅フェイズの処理に変える
+                                if i == 5:
+                                    self.mainboard.round += 1;
+                                    
+                                    for i in self.mainboard.actionCards:
+                                        i.meeple = None
+                                    for p in self.players:
+                                        p.workingMember = 0
+                elif self.mainboard.phase = '帰宅フェイズ':
+                    
                 for pmeeple in self.mainboard.playerCirc:
                     if pmeeple.collidepoint(self.mousex,self.mousey) == True:
                         self.perspective = self.mainboard.playerCirc.index(pmeeple)
@@ -147,6 +172,7 @@ class Main:
                         self.perspective = 7
                     else:
                         self.perspective = 6
+                
             # Redraw the screen and wait a clock tick.
             pygame.display.update()
             self.FPSCLOCK.tick(FPS)
